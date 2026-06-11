@@ -1,20 +1,26 @@
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request) {
     const url = new URL(request.url);
 
-    // 1. Si Tealium appelle le script gtag.js
-    if (url.pathname.startsWith('/gtag/js')) {
-      const targetUrl = 'https://www.googletagmanager.com' + url.pathname + url.search;
-      return fetch(new Request(targetUrl, request));
+    let targetHost = null;
+
+    if (url.pathname.startsWith("/gtag/js")) {
+      targetHost = "https://www.googletagmanager.com";
+    } else if (
+      url.pathname.startsWith("/g/collect") ||
+      url.pathname.startsWith("/mp/collect")
+    ) {
+      targetHost = "https://www.google-analytics.com";
+    } else if (url.pathname.startsWith("/pagead/")) {
+      targetHost = "https://googleads.g.doubleclick.net";
     }
 
-    // 2. Si Tealium envoie une conversion ou un signal publicitaire
-    if (url.pathname.startsWith('/pagead/')) {
-      const targetUrl = 'https://googleads.g.doubleclick.net' + url.pathname + url.search;
-      return fetch(new Request(targetUrl, request));
+    if (!targetHost) {
+      return new Response("Not Found", { status: 404 });
     }
 
-    // Si la requête ne correspond à rien, on renvoie une erreur propre
-    return new Response('Not Found', { status: 404 });
+    const targetUrl = targetHost + url.pathname + url.search;
+
+    return fetch(new Request(targetUrl, request));
   }
-};
+}
