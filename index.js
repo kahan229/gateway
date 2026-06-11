@@ -2,25 +2,46 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
 
-    let targetHost = null;
+    let targetOrigin;
 
+    // Google Tag
     if (url.pathname.startsWith("/gtag/js")) {
-      targetHost = "https://www.googletagmanager.com";
-    } else if (
+      targetOrigin = "https://www.googletagmanager.com";
+    }
+
+    // Google Analytics 4
+    else if (
       url.pathname.startsWith("/g/collect") ||
       url.pathname.startsWith("/mp/collect")
     ) {
-      targetHost = "https://www.google-analytics.com";
-    } else if (url.pathname.startsWith("/pagead/")) {
-      targetHost = "https://googleads.g.doubleclick.net";
+      targetOrigin = "https://www.google-analytics.com";
     }
 
-    if (!targetHost) {
+    // Google Ads
+    else if (url.pathname.startsWith("/pagead/")) {
+      targetOrigin = "https://googleads.g.doubleclick.net";
+    }
+
+    // Route inconnue
+    else {
       return new Response("Not Found", { status: 404 });
     }
 
-    const targetUrl = targetHost + url.pathname + url.search;
+    const targetUrl =
+      targetOrigin +
+      url.pathname +
+      url.search;
 
-    return fetch(new Request(targetUrl, request));
+    const proxyRequest = new Request(targetUrl, {
+      method: request.method,
+      headers: request.headers,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : request.body,
+      redirect: "follow"
+    });
+
+    return fetch(proxyRequest);
   }
-}
+};
