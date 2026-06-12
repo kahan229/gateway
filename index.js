@@ -2,7 +2,7 @@ export default {
 async fetch(request) {
 const url = new URL(request.url);
 
-```
+
 let targetOrigin = null;
 
 if (url.pathname.startsWith("/gtag/js")) {
@@ -58,7 +58,7 @@ return new Response(response.body, {
   statusText: response.statusText,
   headers: resHeaders
 });
-```
+
 
 }
 };
