@@ -1,64 +1,84 @@
 export default {
-async fetch(request) {
-const url = new URL(request.url);
+  async fetch(request) {
+    const url = new URL(request.url);
 
+    let targetOrigin = null;
 
-let targetOrigin = null;
+    // ----------------------------
+    // Google Tag Gateway (/c7li)
+    // ----------------------------
+    if (url.pathname.startsWith("/c7li/gtag/js")) {
+      targetOrigin = "https://www.googletagmanager.com";
 
-if (url.pathname.startsWith("/gtag/js")) {
-  targetOrigin = "https://www.googletagmanager.com";
-} else if (
-  url.pathname.startsWith("/g/collect") ||
-  url.pathname.startsWith("/mp/collect")
-) {
-  targetOrigin = "https://www.google-analytics.com";
-} else if (url.pathname.startsWith("/pagead/")) {
-  targetOrigin = "https://googleads.g.doubleclick.net";
-}
+    } else if (
+      url.pathname.startsWith("/c7li/g/collect") ||
+      url.pathname.startsWith("/c7li/mp/collect")
+    ) {
+      targetOrigin = "https://www.google-analytics.com";
 
-if (!targetOrigin) {
-  return new Response("Not Found", { status: 404 });
-}
+    } else if (url.pathname.startsWith("/c7li/pagead/")) {
+      targetOrigin = "https://googleads.g.doubleclick.net";
+    }
 
-const targetUrl = targetOrigin + url.pathname + url.search;
+    // ----------------------------
+    // Fallback (optionnel legacy)
+    // ----------------------------
+    else if (url.pathname.startsWith("/gtag/js")) {
+      targetOrigin = "https://www.googletagmanager.com";
 
-const newHeaders = new Headers(request.headers);
-newHeaders.set("host", new URL(targetOrigin).host);
+    } else if (
+      url.pathname.startsWith("/g/collect") ||
+      url.pathname.startsWith("/mp/collect")
+    ) {
+      targetOrigin = "https://www.google-analytics.com";
 
-const init = {
-  method: request.method,
-  headers: newHeaders,
-  redirect: "follow"
-};
+    } else if (url.pathname.startsWith("/pagead/")) {
+      targetOrigin = "https://googleads.g.doubleclick.net";
+    }
 
-if (
-  request.method !== "GET" &&
-  request.method !== "HEAD"
-) {
-  init.body = request.body;
-}
+    if (!targetOrigin) {
+      return new Response("Not Found", { status: 404 });
+    }
 
-const response = await fetch(targetUrl, init);
+    // ----------------------------
+    // IMPORTANT : remove /c7li
+    // ----------------------------
+    const rewrittenPath = url.pathname.replace("/c7li", "");
 
-// Logs utiles pour GA4
-if (
-  url.pathname.startsWith("/g/collect") ||
-  url.pathname.startsWith("/mp/collect")
-) {
-  console.log(
-    `[GA4] ${request.method} ${url.pathname} -> ${response.status}`
-  );
-}
+    const targetUrl = targetOrigin + rewrittenPath + url.search;
 
-const resHeaders = new Headers(response.headers);
-resHeaders.set("Access-Control-Allow-Origin", "*");
+    const newHeaders = new Headers(request.headers);
+    newHeaders.set("host", new URL(targetOrigin).host);
 
-return new Response(response.body, {
-  status: response.status,
-  statusText: response.statusText,
-  headers: resHeaders
-});
+    const init = {
+      method: request.method,
+      headers: newHeaders,
+      redirect: "follow",
+    };
 
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      init.body = request.body;
+    }
 
-}
+    const response = await fetch(targetUrl, init);
+
+    // Logs GA4 (debug utile)
+    if (
+      url.pathname.includes("/g/collect") ||
+      url.pathname.includes("/mp/collect")
+    ) {
+      console.log(`[GA4] ${request.method} ${url.pathname} -> ${response.status}`);
+    }
+
+    const resHeaders = new Headers(response.headers);
+
+    // CORS (important pour tags)
+    resHeaders.set("Access-Control-Allow-Origin", "*");
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: resHeaders,
+    });
+  },
 };
