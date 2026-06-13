@@ -3,7 +3,20 @@ var index_default = {
     const url = new URL(request.url);
     let targetOrigin = null;
 
-    // 1. Détermination des destinations
+    // 1. Gérer les requêtes de Preflight OPTIONS (Crucial pour éviter le Fetch Failed)
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "*",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    // 2. Détermination des destinations
     if (url.pathname.startsWith("/c7li/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
     } else if (url.pathname.startsWith("/c7li/g/collect") || url.pathname.startsWith("/c7li/mp/collect")) {
@@ -22,15 +35,15 @@ var index_default = {
       return new Response("Not Found", { status: 404 });
     }
 
-    // 2. Reconstruction de l'URL de destination
+    // 3. Reconstruction de l'URL
     const rewrittenPath = url.pathname.replace("/c7li", "");
     const targetUrl = targetOrigin + rewrittenPath + url.search;
 
-    // 3. Duplication et enrichissement des en-têtes
+    // 4. Duplication et enrichissement des en-têtes
     const newHeaders = new Headers(request.headers);
     newHeaders.set("host", new URL(targetOrigin).host);
 
-    // Injection de l'IP utilisateur réel pour éviter le rejet silencieux de GA4
+    // Injection de l'IP utilisateur réel
     const clientIP = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for");
     if (clientIP) {
       newHeaders.set("X-Forwarded-For", clientIP);
@@ -42,34 +55,38 @@ var index_default = {
       redirect: "follow"
     };
 
-    // Gestion robuste du Body en mode POST pour GA4
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      init.body = await request.clone().arrayBuffer();
+    // Lecture sécurisée du Body pour les requêtes POST
+    if (request.method === "POST") {
+      try {
+        init.body = await request.arrayBuffer();
+      } catch (e) {
+        console.error("Erreur lors de la lecture du body:", e);
+      }
     }
 
-    // 4. Appel des serveurs Google
-    const response = await fetch(targetUrl, init);
+    // 5. Appel des serveurs Google
+    try {
+      const response = await fetch(targetUrl, init);
 
-    // Logs de diagnostic dans la console Cloudflare
-    if (url.pathname.includes("/g/collect") || url.pathname.includes("/mp/collect")) {
-      console.log(`[GA4] ${request.method} ${url.pathname} -> ${response.status}`);
+      if (url.pathname.includes("/g/collect") || url.pathname.includes("/mp/collect")) {
+        console.log(`[GA4] ${request.method} ${url.pathname} -> ${response.status}`);
+      }
+
+      const responseBody = await response.arrayBuffer();
+      const resHeaders = new Headers(response.headers);
+      resHeaders.set("Access-Control-Allow-Origin", "*");
+
+      return new Response(responseBody, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: resHeaders
+      });
+
+    } catch (fetchError) {
+      console.error("Erreur Fetch vers Google:", fetchError);
+      return new Response("Gateway Error", { status: 502 });
     }
-
-    // 5. Extraction du corps de la réponse Google de manière sécurisée
-    const responseBody = await response.arrayBuffer();
-
-    // 6. Gestion des en-têtes de retour (CORS obligatoire)
-    const resHeaders = new Headers(response.headers);
-    resHeaders.set("Access-Control-Allow-Origin", "*");
-
-    return new Response(responseBody, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: resHeaders
-    });
   }
 };
 
-export {
-  index_default as default
-};
+export { index_default as default };
