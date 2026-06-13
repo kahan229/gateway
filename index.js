@@ -1,26 +1,18 @@
-export default {
+var index_default = {
   async fetch(request) {
     const url = new URL(request.url);
     let targetOrigin = null;
 
-    // 1. Détection des routes
+    // 1. Détermination des destinations
     if (url.pathname.startsWith("/c7li/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
-    } else if (
-      url.pathname.startsWith("/c7li/g/collect") ||
-      url.pathname.startsWith("/c7li/mp/collect")
-    ) {
+    } else if (url.pathname.startsWith("/c7li/g/collect") || url.pathname.startsWith("/c7li/mp/collect")) {
       targetOrigin = "https://www.google-analytics.com";
     } else if (url.pathname.startsWith("/c7li/pagead/")) {
       targetOrigin = "https://googleads.g.doubleclick.net";
-    }
-    // Fallback legacy
-    else if (url.pathname.startsWith("/gtag/js")) {
+    } else if (url.pathname.startsWith("/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
-    } else if (
-      url.pathname.startsWith("/g/collect") ||
-      url.pathname.startsWith("/mp/collect")
-    ) {
+    } else if (url.pathname.startsWith("/g/collect") || url.pathname.startsWith("/mp/collect")) {
       targetOrigin = "https://www.google-analytics.com";
     } else if (url.pathname.startsWith("/pagead/")) {
       targetOrigin = "https://googleads.g.doubleclick.net";
@@ -30,17 +22,15 @@ export default {
       return new Response("Not Found", { status: 404 });
     }
 
-    // 2. Nettoyage du chemin
+    // 2. Reconstruction de l'URL de destination
     const rewrittenPath = url.pathname.replace("/c7li", "");
     const targetUrl = targetOrigin + rewrittenPath + url.search;
 
-    // 3. IMPORTANT : Transmettre les en-têtes de l'utilisateur réel
+    // 3. Duplication et enrichissement des en-têtes
     const newHeaders = new Headers(request.headers);
-    
-    // On force l'hôte de destination
     newHeaders.set("host", new URL(targetOrigin).host);
 
-    // RÉSOLUTION DU PROBLÈME : On récupère l'IP réelle vue par Cloudflare et on la passe à Google
+    // Injection de l'IP utilisateur réel pour éviter le rejet silencieux de GA4
     const clientIP = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for");
     if (clientIP) {
       newHeaders.set("X-Forwarded-For", clientIP);
@@ -49,31 +39,37 @@ export default {
     const init = {
       method: request.method,
       headers: newHeaders,
-      redirect: "follow",
+      redirect: "follow"
     };
 
-    // Transmission du body pour les requêtes POST (très fréquent en GA4)
+    // Gestion robuste du Body en mode POST pour GA4
     if (request.method !== "GET" && request.method !== "HEAD") {
-      // Utilisez clone() pour éviter les erreurs de flux déjà lu
-      init.body = await request.clone().arrayBuffer(); 
+      init.body = await request.clone().arrayBuffer();
     }
 
-    // 4. Envoi à Google
+    // 4. Appel des serveurs Google
     const response = await fetch(targetUrl, init);
 
-    // Logs de debug
+    // Logs de diagnostic dans la console Cloudflare
     if (url.pathname.includes("/g/collect") || url.pathname.includes("/mp/collect")) {
       console.log(`[GA4] ${request.method} ${url.pathname} -> ${response.status}`);
     }
 
-    // 5. Renvoi de la réponse au navigateur avec les en-têtes CORS
+    // 5. Extraction du corps de la réponse Google de manière sécurisée
+    const responseBody = await response.arrayBuffer();
+
+    // 6. Gestion des en-têtes de retour (CORS obligatoire)
     const resHeaders = new Headers(response.headers);
     resHeaders.set("Access-Control-Allow-Origin", "*");
 
-    return new Response(response.body, {
+    return new Response(responseBody, {
       status: response.status,
       statusText: response.statusText,
-      headers: resHeaders,
+      headers: resHeaders
     });
-  },
+  }
+};
+
+export {
+  index_default as default
 };
