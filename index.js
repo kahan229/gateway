@@ -16,20 +16,22 @@ var index_default = {
       });
     }
 
-    // 2. Détermination des destinations
+
+        // 1. CHANGER LA DESTINATION DE COLLECTE DE GOOGLE-ANALYTICS EN ANALYTICS
     if (url.pathname.startsWith("/c7li/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
     } else if (url.pathname.startsWith("/c7li/g/collect") || url.pathname.startsWith("/c7li/mp/collect")) {
-      targetOrigin = "https://www.google-analytics.com";
+      targetOrigin = "https://analytics.google.com"; // <--- LA CORRECTION EST ICI
     } else if (url.pathname.startsWith("/c7li/pagead/")) {
       targetOrigin = "https://googleads.g.doubleclick.net";
     } else if (url.pathname.startsWith("/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
     } else if (url.pathname.startsWith("/g/collect") || url.pathname.startsWith("/mp/collect")) {
-      targetOrigin = "https://www.google-analytics.com";
+      targetOrigin = "https://analytics.google.com"; // <--- ET ICI
     } else if (url.pathname.startsWith("/pagead/")) {
       targetOrigin = "https://googleads.g.doubleclick.net";
     }
+
 
     if (!targetOrigin) {
       return new Response("Not Found", { status: 404 });
