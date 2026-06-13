@@ -3,7 +3,7 @@ var index_default = {
     const url = new URL(request.url);
     let targetOrigin = null;
 
-    // 1. Gérer les requêtes de Preflight OPTIONS (Crucial pour éviter le Fetch Failed)
+    // 1. Gérer les requêtes de Preflight OPTIONS pour les requêtes POST (CORS)
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -16,36 +16,29 @@ var index_default = {
       });
     }
 
-
-        // 1. CHANGER LA DESTINATION DE COLLECTE DE GOOGLE-ANALYTICS EN ANALYTICS
-    if (url.pathname.startsWith("/c7li/gtag/js")) {
+    // 2. Détermination stricte des destinations Google
+    if (url.pathname.includes("/gtag/js")) {
       targetOrigin = "https://www.googletagmanager.com";
-    } else if (url.pathname.startsWith("/c7li/g/collect") || url.pathname.startsWith("/c7li/mp/collect")) {
-      targetOrigin = "https://analytics.google.com"; // <--- LA CORRECTION EST ICI
-    } else if (url.pathname.startsWith("/c7li/pagead/")) {
-      targetOrigin = "https://googleads.g.doubleclick.net";
-    } else if (url.pathname.startsWith("/gtag/js")) {
-      targetOrigin = "https://www.googletagmanager.com";
-    } else if (url.pathname.startsWith("/g/collect") || url.pathname.startsWith("/mp/collect")) {
-      targetOrigin = "https://analytics.google.com"; // <--- ET ICI
-    } else if (url.pathname.startsWith("/pagead/")) {
+    } else if (url.pathname.includes("/g/collect") || url.pathname.includes("/mp/collect")) {
+      targetOrigin = "https://analytics.google.com";
+    } else if (url.pathname.includes("/pagead/")) {
       targetOrigin = "https://googleads.g.doubleclick.net";
     }
 
-
+    // Sécurité si le chemin ne correspond à rien
     if (!targetOrigin) {
       return new Response("Not Found", { status: 404 });
     }
 
-    // 3. Reconstruction de l'URL
+    // 3. Nettoyage du préfixe /c7li pour reconstruire l'URL Google officielle
     const rewrittenPath = url.pathname.replace("/c7li", "");
     const targetUrl = targetOrigin + rewrittenPath + url.search;
 
-    // 4. Duplication et enrichissement des en-têtes
+    // 4. Préparation des en-têtes pour Google
     const newHeaders = new Headers(request.headers);
     newHeaders.set("host", new URL(targetOrigin).host);
 
-    // Injection de l'IP utilisateur réel
+    // Injection de la vraie IP de l'internaute
     const clientIP = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for");
     if (clientIP) {
       newHeaders.set("X-Forwarded-For", clientIP);
@@ -57,24 +50,23 @@ var index_default = {
       redirect: "follow"
     };
 
-    // Lecture sécurisée du Body pour les requêtes POST
+    // Récupération du body si c'est un envoi de données POST
     if (request.method === "POST") {
       try {
         init.body = await request.arrayBuffer();
       } catch (e) {
-        console.error("Erreur lors de la lecture du body:", e);
+        console.error("Erreur lecture body POST:", e);
       }
     }
 
-    // 5. Appel des serveurs Google
+    // 5. Envoi de la requête à Google et récupération de la vraie réponse
     try {
       const response = await fetch(targetUrl, init);
-
-      if (url.pathname.includes("/g/collect") || url.pathname.includes("/mp/collect")) {
-        console.log(`[GA4] ${request.method} ${url.pathname} -> ${response.status}`);
-      }
-
+      
+      // On récupère le contenu de la réponse de Google (le script ou le pixel)
       const responseBody = await response.arrayBuffer();
+      
+      // On renvoie exactement ce que Google a répondu (200 pour le script, 204 pour la collecte)
       const resHeaders = new Headers(response.headers);
       resHeaders.set("Access-Control-Allow-Origin", "*");
 
